@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { SectionCards } from '$lib/components/dashboard/index';
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+
+	let SectionCards: any = $state(null);
 
 	type Severity = 'safe' | 'warning' | 'critical';
 	type Metric = {
@@ -26,8 +27,9 @@
 
 	onMount(async () => {
 		try {
-			// Simulate API call delay - replace with actual API calls
-			await new Promise((resolve) => setTimeout(resolve, 1500));
+			// Lazy load dashboard components
+			const module = await import('$lib/components/dashboard/index.js');
+			SectionCards = module.SectionCards;
 
 			// Load metrics data
 			metrics = [
@@ -157,4 +159,6 @@
 	<meta name="description" content="BeeLive Dashboard" />
 </svelte:head>
 
-<SectionCards {metrics} {loading} />
+{#if SectionCards}
+	<SectionCards {metrics} {loading} />
+{/if}

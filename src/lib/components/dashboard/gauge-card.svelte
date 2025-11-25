@@ -53,23 +53,23 @@
 		ranges,
 	}: GaugeCardProps = $props();
 
-	// Determine which segment the current value falls into based on actual segments
-	// Segments should be checked in order, with proper boundary handling
-	const currentSegment = $derived.by(() => {
-		// Sort segments by start value to ensure proper order
-		const sortedSegments = [...segments].sort((a, b) => {
+	// Cache sorted segments - they don't change, so sort once
+	const sortedSegments = $derived(
+		[...segments].sort((a, b) => {
 			const aStart = "start" in a ? a.start : a[0];
 			const bStart = "start" in b ? b.start : b[0];
 			return aStart - bStart;
-		});
+		})
+	);
 
+	// Determine which segment the current value falls into
+	const currentSegment = $derived.by(() => {
 		for (let i = 0; i < sortedSegments.length; i++) {
 			const segment = sortedSegments[i];
 			const start = "start" in segment ? segment.start : segment[0];
 			const stop = "stop" in segment ? segment.stop : segment[1];
 			
 			// For the last segment, include the upper bound
-			// For other segments, use >= start and < stop (except for the boundary)
 			if (i === sortedSegments.length - 1) {
 				if (percent >= start && percent <= stop) {
 					return segment;
@@ -80,25 +80,34 @@
 				}
 			}
 		}
-		// Fallback to last segment if no match (shouldn't happen, but safety)
+		// Fallback to last segment if no match
 		return sortedSegments[sortedSegments.length - 1] || segments[0];
 	});
 
 	// Determine current status based on the segment's color or label
+	// Optimized: check color first (most common case), then label
 	const currentStatus = $derived.by(() => {
 		const segment = currentSegment;
 		if (!segment || !("color" in segment)) return "safe";
 		
-		const color = segment.color?.toLowerCase() || "";
-		if (color.includes("#22c55e") || color.includes("green")) return "safe";
-		if (color.includes("#eab308") || color.includes("yellow")) return "warning";
-		if (color.includes("#ef4444") || color.includes("red")) return "critical";
+		const color = segment.color;
+		if (!color) {
+			const label = segment.label?.toLowerCase() || "";
+			if (label.includes("warning")) return "warning";
+			if (label.includes("critical")) return "critical";
+			return "safe";
+		}
 		
-		// Fallback to label if color doesn't match
-		const label = segment.label?.toLowerCase() || "";
-		if (label.includes("normal") || label.includes("safe")) return "safe";
-		if (label.includes("warning")) return "warning";
-		if (label.includes("critical")) return "critical";
+		// Direct color comparison (faster than includes)
+		if (color === "#22c55e") return "safe";
+		if (color === "#eab308") return "warning";
+		if (color === "#ef4444") return "critical";
+		
+		// Fallback to lowercase check for other colors
+		const colorLower = color.toLowerCase();
+		if (colorLower.includes("green")) return "safe";
+		if (colorLower.includes("yellow")) return "warning";
+		if (colorLower.includes("red")) return "critical";
 		
 		return "safe";
 	});
@@ -117,26 +126,23 @@
 
 	const status = $derived(statusConfig[currentStatus]);
 
-	// Calculate arrow position using the exact same formula as svelte-gauge
-	// svelte-gauge uses: scale(value, 0, 100, 0, 360) then polarToCartesian
-	// scale function: targetStart + ((targetStop - targetStart) * (value - start)) / (stop - start)
-	// For our case: 0 + ((360 - 0) * (percent - 0)) / (100 - 0) = (percent / 100) * 360
-	const startAngle = 0;
-	const stopAngle = 360;
-	const gaugeAngleDegrees = $derived((percent / 100) * (stopAngle - startAngle) + startAngle);
-	const gaugeAngleRadians = $derived(gaugeAngleDegrees * (Math.PI / 180));
-	
-	// Use the same polarToCartesian formula as svelte-gauge
-	// x = radius - adjustedRadius * sin(angle)
-	// y = radius + adjustedRadius * cos(angle)
-	// For positioning, we'll use a radius that matches the gauge (approximately 75-80px)
+	// Calculate arrow position - optimized: combine calculations
 	const arrowRadius = 75;
-	const arrowOffset = 0; // borderAdjusted would be stroke/2, but we want arrow on the arc
-	const arrowX = $derived(arrowRadius - (arrowRadius - arrowOffset) * Math.sin(gaugeAngleRadians));
-	const arrowY = $derived(arrowRadius + (arrowRadius - arrowOffset) * Math.cos(gaugeAngleRadians));
+	const arrowOffset = 0;
 	
-	// Calculate the angle for arrow rotation (pointing along the arc)
-	const arrowRotationAngle = $derived((Math.atan2(arrowY - arrowRadius, arrowX - arrowRadius) * 180) / Math.PI);
+	// Combined calculation to reduce derived computations
+	const arrowPosition = $derived.by(() => {
+		const gaugeAngleRadians = (percent / 100) * 360 * (Math.PI / 180);
+		const adjustedRadius = arrowRadius - arrowOffset;
+		const x = arrowRadius - adjustedRadius * Math.sin(gaugeAngleRadians);
+		const y = arrowRadius + adjustedRadius * Math.cos(gaugeAngleRadians);
+		const rotation = (Math.atan2(y - arrowRadius, x - arrowRadius) * 180) / Math.PI;
+		return { x, y, rotation };
+	});
+	
+	const arrowX = $derived(arrowPosition.x);
+	const arrowY = $derived(arrowPosition.y);
+	const arrowRotationAngle = $derived(arrowPosition.rotation);
 	
 	// Arrow color should match the segment color, not the status
 	const arrowColor = $derived.by(() => {
