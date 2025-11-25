@@ -117,8 +117,15 @@
 			// Defer heavy rendering to next frame to show skeleton immediately
 			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 			
-			// Simulate data fetching - replace with actual API call
-			await new Promise((resolve) => setTimeout(resolve, 300));
+			// TODO: When implementing real server-side data fetching:
+			// 1. Remove this onMount and loading state
+			// 2. Create +page.server.ts to fetch threshold configurations from API
+			// 3. Pass data via props: let { data }: { data: PageData } = $props()
+			// 4. Skeletons will automatically show during navigation via SvelteKit's loading states
+			// 5. No artificial delays needed - loading state managed by SvelteKit
+			
+			// Minimal delay for smooth skeleton transition (remove when using server-side data)
+			await new Promise((resolve) => setTimeout(resolve, 100));
 			loading = false;
 		} catch (error) {
 			console.error("Failed to load configurations:", error);

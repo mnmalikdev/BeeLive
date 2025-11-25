@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
+	import { GaugeCardSkeleton } from '$lib/components/dashboard/index.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -31,7 +32,14 @@
 			const module = await import('$lib/components/dashboard/index.js');
 			SectionCards = module.SectionCards;
 
-			// Load metrics data
+			// TODO: When implementing real server-side data fetching:
+			// 1. Remove this onMount data loading
+			// 2. Use +page.server.ts to fetch data from API
+			// 3. Pass data via props: let { data }: { data: PageData } = $props()
+			// 4. Skeletons will automatically show during navigation via SvelteKit's loading states
+			// 5. No artificial delays needed - loading state managed by SvelteKit
+
+			// Load metrics data (temporary - replace with server-side fetching)
 			metrics = [
 				{
 					id: 'temp',
@@ -159,6 +167,14 @@
 	<meta name="description" content="BeeLive Dashboard" />
 </svelte:head>
 
-{#if SectionCards}
+{#if SectionCards && !loading}
 	<SectionCards {metrics} {loading} />
+{:else}
+	<div class="grid w-full auto-rows-fr gap-6 px-4 lg:px-6 sm:grid-cols-2 xl:grid-cols-4">
+		{#each Array(8) as _, i}
+			<div class="flex w-full justify-center">
+				<GaugeCardSkeleton />
+			</div>
+		{/each}
+	</div>
 {/if}

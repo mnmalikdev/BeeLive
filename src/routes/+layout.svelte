@@ -3,6 +3,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { AppSidebar, SiteHeader } from '$lib/components/layout/index.js';
+	
 	let { children } = $props();
 </script>
 

@@ -21,9 +21,6 @@
 		"db:studio": "drizzle-kit studio"
 	},
 	"devDependencies": {
-		"@dnd-kit-svelte/svelte": "^0.1.5",
-		"@dnd-kit/abstract": "^0.1.21",
-		"@dnd-kit/helpers": "^0.1.21",
 		"@eslint/compat": "^1.4.0",
 		"@eslint/js": "^9.38.0",
 		"@internationalized/date": "^3.10.0",
@@ -35,7 +32,6 @@
 		"@tailwindcss/forms": "^0.5.10",
 		"@tailwindcss/typography": "^0.5.19",
 		"@tailwindcss/vite": "^4.1.14",
-		"@tanstack/table-core": "^8.21.3",
 		"@types/node": "^22",
 		"@vitest/browser-playwright": "^4.0.5",
 		"bits-ui": "^2.14.4",
@@ -50,7 +46,6 @@
 		"prettier-plugin-tailwindcss": "^0.7.1",
 		"svelte": "^5.41.0",
 		"svelte-check": "^4.3.3",
-		"svelte-sonner": "^1.0.6",
 		"tailwind-merge": "^3.4.0",
 		"tailwind-variants": "^3.1.1",
 		"tailwindcss": "^4.1.17",

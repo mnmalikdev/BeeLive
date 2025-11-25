@@ -13,7 +13,6 @@
 		user: {
 			name: "BeeLive",
 			email: "info@processalerts.com",
-			// use the favicon.svg as the avatar
 			avatar: favicon,
 		},
 		navMain: [
@@ -27,11 +26,11 @@
 				href: "/history",
 				icon: HistoryIcon,
 			},
-		{
-			title: "Configurations",
-			href: "/configurations",
-			icon: SettingsIcon,
-		},
+			{
+				title: "Configurations",
+				href: "/configurations",
+				icon: SettingsIcon,
+			},
 		],
 	};
 

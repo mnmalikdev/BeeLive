@@ -26,8 +26,13 @@ export const load: PageServerLoad = async ({ fetch, depends }) => {
 	// This allows us to invalidate it when needed
 	depends('dashboard');
 
-	// Return immediately - data will be loaded client-side to show loading states
-	// TODO: Replace with actual API calls
+	// TODO: Implement real server-side data fetching
+	// 1. Fetch metrics data from API: const response = await fetch('/api/metrics')
+	// 2. Parse and validate response: const metrics = await response.json()
+	// 3. Return metrics: return { metrics }
+	// 4. Remove client-side onMount data loading from +page.svelte
+	// 5. Skeletons will show automatically during server-side fetch via SvelteKit
+	// 6. This will eliminate the need for artificial delays and improve performance
 
 	// TODO: Replace with actual API calls
 	// For now, return mock metrics data
