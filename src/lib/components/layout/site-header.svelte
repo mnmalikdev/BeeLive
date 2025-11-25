@@ -9,7 +9,7 @@
 	<div class="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
 		<Sidebar.Trigger class="-ml-1" />
 		<Separator orientation="vertical" class="mx-2 data-[orientation=vertical]:h-4" />
-		<h1 class="text-base font-medium">Documents</h1>
+		<h1 class="text-base font-medium">Beelive Telemetry</h1>
 		<div class="ml-auto"></div>
 	</div>
 </header>

@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { MetricThreshold } from "$lib/components/configurations/index.js";
+	import { MetricThreshold, MetricThresholdSkeleton } from "$lib/components/configurations/index.js";
+	import { onMount } from "svelte";
+
+	let loading = $state(true);
 
 	// Default threshold values for each metric
 	const metrics = $state([
@@ -108,6 +111,20 @@
 			criticalMax: 30,
 		},
 	]);
+
+	onMount(async () => {
+		try {
+			// Defer heavy rendering to next frame to show skeleton immediately
+			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+			
+			// Simulate data fetching - replace with actual API call
+			await new Promise((resolve) => setTimeout(resolve, 300));
+			loading = false;
+		} catch (error) {
+			console.error("Failed to load configurations:", error);
+			loading = false;
+		}
+	});
 </script>
 
 <svelte:head>
@@ -125,21 +142,27 @@
 	</header>
 
 	<div class="grid gap-6 md:grid-cols-2">
-		{#each metrics as metric (metric.id)}
-			<MetricThreshold
-				id={metric.id}
-				label={metric.label}
-				unit={metric.unit}
-				min={metric.min}
-				max={metric.max}
-				bind:normalMin={metric.normalMin}
-				bind:normalMax={metric.normalMax}
-				bind:warningMin={metric.warningMin}
-				bind:warningMax={metric.warningMax}
-				bind:criticalMin={metric.criticalMin}
-				bind:criticalMax={metric.criticalMax}
-			/>
-		{/each}
+		{#if loading}
+			{#each Array(8) as _, i}
+				<MetricThresholdSkeleton />
+			{/each}
+		{:else}
+			{#each metrics as metric (metric.id)}
+				<MetricThreshold
+					id={metric.id}
+					label={metric.label}
+					unit={metric.unit}
+					min={metric.min}
+					max={metric.max}
+					bind:normalMin={metric.normalMin}
+					bind:normalMax={metric.normalMax}
+					bind:warningMin={metric.warningMin}
+					bind:warningMax={metric.warningMax}
+					bind:criticalMin={metric.criticalMin}
+					bind:criticalMax={metric.criticalMax}
+				/>
+			{/each}
+		{/if}
 	</div>
 </section>
 
