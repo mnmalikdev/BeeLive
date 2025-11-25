@@ -10,6 +10,6 @@
 		<Sidebar.Trigger class="-ml-1" />
 		<Separator orientation="vertical" class="mx-2 data-[orientation=vertical]:h-4" />
 		<h1 class="text-base font-medium">Documents</h1>
-		<div class="ml-auto" />
+		<div class="ml-auto"></div>
 	</div>
 </header>

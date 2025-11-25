@@ -11,7 +11,7 @@
 
 	const data = {
 		user: {
-			name: "Process Alerts",
+			name: "BeeLive",
 			email: "info@processalerts.com",
 			// use the favicon.svg as the avatar
 			avatar: favicon,
@@ -27,11 +27,11 @@
 				href: "/history",
 				icon: HistoryIcon,
 			},
-			{
-				title: "Settings",
-				href: "/settings",
-				icon: SettingsIcon,
-			},
+		{
+			title: "Configurations",
+			href: "/configurations",
+			icon: SettingsIcon,
+		},
 		],
 	};
 
@@ -46,7 +46,7 @@
 					{#snippet child({ props })}
 						<a href="/dashboard" {...props}>
 							<InnerShadowTopIcon class="size-5" />
-							<span class="text-base font-semibold">Process Alerts</span>
+							<span class="text-base font-semibold">BeeLive</span>
 						</a>
 					{/snippet}
 				</Sidebar.MenuButton>

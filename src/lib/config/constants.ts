@@ -2,7 +2,7 @@
  * Application-wide constants
  */
 
-export const APP_NAME = 'Process Alerts';
+export const APP_NAME = 'BeeLive';
 export const APP_VERSION = '0.0.1';
 
 // API Configuration
@@ -43,7 +43,7 @@ export const ROUTES = {
 		CREATE: '/alerts/create',
 		EDIT: (id: string) => `/alerts/${id}/edit`,
 	},
-	SETTINGS: '/settings',
+	CONFIGURATIONS: '/configurations',
 	PROFILE: '/profile',
 } as const;
 

@@ -11,7 +11,7 @@ import NestedRoot from "./drawer-nested.svelte";
 import Close from "./drawer-close.svelte";
 import Trigger from "./drawer-trigger.svelte";
 
-const Portal: typeof DrawerPrimitive.Portal = DrawerPrimitive.Portal;
+const Portal = (DrawerPrimitive as any)?.Portal;
 
 export {
 	Root,

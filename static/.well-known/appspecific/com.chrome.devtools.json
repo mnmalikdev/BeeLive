@@ -1,6 +1,6 @@
 {
 	"version": "1.0",
-	"name": "Process Alerts Frontend",
-	"description": "SvelteKit frontend for Process Alerts application"
+	"name": "BeeLive Frontend",
+	"description": "SvelteKit frontend for BeeLive application"
 }
 

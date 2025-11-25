@@ -1,91 +1,166 @@
 <script lang="ts">
-	import TrendingDownIcon from "@tabler/icons-svelte/icons/trending-down";
-	import TrendingUpIcon from "@tabler/icons-svelte/icons/trending-up";
-	import { Badge } from "$lib/components/ui/badge/index.js";
-	import * as Card from "$lib/components/ui/card/index.js";
+	import GaugeCard from "./gauge-card.svelte";
+	import GaugeCardSkeleton from "./gauge-card-skeleton.svelte";
+
+	type Severity = "safe" | "warning" | "critical";
+	type Metric = {
+		id: string;
+		label: string;
+		unit: string;
+		value: string;
+		percent: number;
+		severity: Severity;
+		scale: [string, string, string];
+		centerLabel?: string;
+		centerSubLabel?: string;
+		ranges?: {
+			normal: string;
+			warning: string;
+			critical: string;
+		};
+	};
+
+	let {
+		metrics = [],
+		loading = false,
+	}: {
+		metrics?: Metric[];
+		loading?: boolean;
+	} = $props();
+
+	const defaultMetrics: Metric[] = [
+		{
+			id: "temp",
+			label: "Hive Temperature",
+			unit: "°C",
+			value: "34.2",
+			percent: 70,
+			severity: "safe",
+			scale: ["32°", "TCM", "36°"],
+			ranges: {
+				normal: "32.0 – 35.5 °C",
+				warning: "35.6 – 36.0 °C",
+				critical: "> 36.0 °C",
+			},
+		},
+		{
+			id: "humidity",
+			label: "Humidity",
+			unit: "%",
+			value: "78",
+			percent: 78,
+			severity: "warning",
+			scale: ["40%", "Hive", "85%"],
+			ranges: {
+				normal: "40 – 75 %",
+				warning: "75 – 85 %",
+				critical: "> 85 % or < 30 %",
+			},
+		},
+		{
+			id: "weight",
+			label: "Weight (kg)",
+			unit: "kg",
+			value: "42.4",
+			percent: 55,
+			severity: "safe",
+			scale: ["20 kg", "Total", "60 kg"],
+			ranges: {
+				normal: "20 – 60 kg (depends on season)",
+				warning: "Sudden drop > 200 g in 2 h",
+				critical: "Drop > 500 g in 4 h",
+			},
+		},
+		{
+			id: "activity",
+			label: "Bee Activity",
+			unit: "dB",
+			value: "62",
+			percent: 62,
+			severity: "safe",
+			scale: ["50 dB", "Day", "70 dB"],
+			ranges: {
+				normal: "Day: 50 – 70 dB / Night: 20 – 40 dB",
+				warning: "Day < 40 dB / Night > 50 dB",
+				critical: "Day < 25 dB or Night > 60 dB",
+			},
+		},
+		{
+			id: "co2",
+			label: "CO₂",
+			unit: "ppm",
+			value: "3 200",
+			percent: 80,
+			severity: "warning",
+			scale: ["400", "Vent", "4 000"],
+			ranges: {
+				normal: "400 – 2 000 ppm",
+				warning: "2 000 – 4 000 ppm",
+				critical: "> 4 000 ppm",
+			},
+		},
+		{
+			id: "honey",
+			label: "Daily Honey Gain",
+			unit: "g",
+			value: "+320",
+			percent: 65,
+			severity: "safe",
+			scale: ["0 g", "Δ 24h", "800 g"],
+			ranges: {
+				normal: "+50 – +800 g/day (flow season)",
+				warning: "–200 – +50 g/day",
+				critical: "< –500 g/day",
+			},
+		},
+		{
+			id: "swarm",
+			label: "Swarm Risk Score",
+			unit: "",
+			value: "58",
+			percent: 58,
+			severity: "warning",
+			scale: ["0", "Score", "100"],
+			ranges: {
+				normal: "0 – 40",
+				warning: "40 – 70",
+				critical: "> 70",
+			},
+		},
+		{
+			id: "battery",
+			label: "Battery %",
+			unit: "%",
+			value: "28",
+			percent: 28,
+			severity: "critical",
+			scale: ["0%", "Charge", "100%"],
+			ranges: {
+				normal: "70 – 100 %",
+				warning: "30 – 70 %",
+				critical: "< 30 %",
+			},
+		},
+	];
+
+	// Use provided metrics if available, otherwise use default metrics
+	const displayMetrics = $derived(
+		metrics && metrics.length > 0 ? metrics : defaultMetrics
+	);
 </script>
 
-<div
-	class="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card *:data-[slot=card]:shadow-xs @xl/main:grid-cols-2 @5xl/main:grid-cols-4 grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t lg:px-6"
->
-	<Card.Root class="@container/card">
-		<Card.Header>
-			<Card.Description>Total Revenue</Card.Description>
-			<Card.Title class="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
-				$1,250.00
-			</Card.Title>
-			<Card.Action>
-				<Badge variant="outline">
-					<TrendingUpIcon />
-					+12.5%
-				</Badge>
-			</Card.Action>
-		</Card.Header>
-		<Card.Footer class="flex-col items-start gap-1.5 text-sm">
-			<div class="line-clamp-1 flex gap-2 font-medium">
-				Trending up this month <TrendingUpIcon class="size-4" />
+<div class="grid w-full auto-rows-fr gap-6 px-4 lg:px-6 sm:grid-cols-2 xl:grid-cols-4">
+	{#if loading}
+		{#each Array(8) as _, i}
+			<div class="flex w-full justify-center">
+				<GaugeCardSkeleton />
 			</div>
-			<div class="text-muted-foreground">Visitors for the last 6 months</div>
-		</Card.Footer>
-	</Card.Root>
-	<Card.Root class="@container/card">
-		<Card.Header>
-			<Card.Description>New Customers</Card.Description>
-			<Card.Title class="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
-				1,234
-			</Card.Title>
-			<Card.Action>
-				<Badge variant="outline">
-					<TrendingDownIcon />
-					-20%
-				</Badge>
-			</Card.Action>
-		</Card.Header>
-		<Card.Footer class="flex-col items-start gap-1.5 text-sm">
-			<div class="line-clamp-1 flex gap-2 font-medium">
-				Down 20% this period <TrendingDownIcon class="size-4" />
+		{/each}
+	{:else}
+		{#each displayMetrics as metric (metric.id)}
+			<div class="flex w-full justify-center">
+				<GaugeCard {...metric} />
 			</div>
-			<div class="text-muted-foreground">Acquisition needs attention</div>
-		</Card.Footer>
-	</Card.Root>
-	<Card.Root class="@container/card">
-		<Card.Header>
-			<Card.Description>Active Accounts</Card.Description>
-			<Card.Title class="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
-				45,678
-			</Card.Title>
-			<Card.Action>
-				<Badge variant="outline">
-					<TrendingUpIcon />
-					+12.5%
-				</Badge>
-			</Card.Action>
-		</Card.Header>
-		<Card.Footer class="flex-col items-start gap-1.5 text-sm">
-			<div class="line-clamp-1 flex gap-2 font-medium">
-				Strong user retention <TrendingUpIcon class="size-4" />
-			</div>
-			<div class="text-muted-foreground">Engagement exceed targets</div>
-		</Card.Footer>
-	</Card.Root>
-	<Card.Root class="@container/card">
-		<Card.Header>
-			<Card.Description>Growth Rate</Card.Description>
-			<Card.Title class="@[250px]/card:text-3xl text-2xl font-semibold tabular-nums">
-				4.5%
-			</Card.Title>
-			<Card.Action>
-				<Badge variant="outline">
-					<TrendingUpIcon />
-					+4.5%
-				</Badge>
-			</Card.Action>
-		</Card.Header>
-		<Card.Footer class="flex-col items-start gap-1.5 text-sm">
-			<div class="line-clamp-1 flex gap-2 font-medium">
-				Steady performance increase <TrendingUpIcon class="size-4" />
-			</div>
-			<div class="text-muted-foreground">Meets growth projections</div>
-		</Card.Footer>
-	</Card.Root>
+		{/each}
+	{/if}
 </div>
