@@ -59,6 +59,7 @@
 		"zod": "^3.25.76"
 	},
 	"dependencies": {
+		"socket.io-client": "^4.8.1",
 		"svelte-gauge": "^2.0.1"
 	}
 }

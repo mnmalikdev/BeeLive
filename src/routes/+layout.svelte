@@ -1,10 +1,28 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { AppSidebar, SiteHeader } from '$lib/components/layout/index.js';
+	import { ToastProvider } from '$lib/components/ui/toast/index.js';
+	import { websocketService } from '$lib/services/websocket.service.js';
 	
 	let { children } = $props();
+
+	// Initialize WebSocket connection on mount
+	onMount(() => {
+		// Only connect in browser environment
+		if (typeof window !== 'undefined') {
+			websocketService.connect();
+		}
+	});
+
+	// Cleanup on destroy
+	onDestroy(() => {
+		if (typeof window !== 'undefined') {
+			websocketService.disconnect();
+		}
+	});
 </script>
 
 <svelte:head>
@@ -26,3 +44,6 @@
 		</div>
 	</Sidebar.Inset>
 </Sidebar.Provider>
+
+<!-- Toast notifications provider -->
+<ToastProvider />

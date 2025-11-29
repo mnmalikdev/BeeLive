@@ -63,18 +63,23 @@
 	);
 
 	// Determine which segment the current value falls into
+	// IMPORTANT: Check segments in order and return the FIRST match to avoid overlaps
+	// Use strict boundaries: [start, stop) for all segments except the last one
 	const currentSegment = $derived.by(() => {
 		for (let i = 0; i < sortedSegments.length; i++) {
 			const segment = sortedSegments[i];
 			const start = "start" in segment ? segment.start : segment[0];
 			const stop = "stop" in segment ? segment.stop : segment[1];
 			
-			// For the last segment, include the upper bound
+			// Check if percent falls within this segment
+			// For the last segment, include the upper bound (<=) to cover 100%
+			// For all others, use strict upper bound (<) to prevent overlaps at boundaries
 			if (i === sortedSegments.length - 1) {
 				if (percent >= start && percent <= stop) {
 					return segment;
 				}
 			} else {
+				// Strict upper bound to prevent overlaps
 				if (percent >= start && percent < stop) {
 					return segment;
 				}
@@ -124,19 +129,28 @@
 		critical: { color: "#ef4444", label: "Critical" },
 	};
 
-	const status = $derived(statusConfig[currentStatus]);
+	// Use the severity prop directly for the badge, not the calculated currentStatus
+	// This ensures the badge matches the actual severity calculation from transformTelemetryToMetrics
+	// The segments are only for visual display on the gauge, not for determining severity
+	const status = $derived(statusConfig[severity]);
 
-	// Calculate arrow position - optimized: combine calculations
+	// Calculate arrow position for semi-circle gauge
+	// Gauge goes from left (0%) to right (100%) in a 180-degree arc
 	const arrowRadius = 75;
-	const arrowOffset = 0;
 	
-	// Combined calculation to reduce derived computations
+	// Convert percent (0-100) to angle in degrees for semi-circle
+	// 0% = -90° (left), 50% = 0° (top), 100% = 90° (right)
 	const arrowPosition = $derived.by(() => {
-		const gaugeAngleRadians = (percent / 100) * 360 * (Math.PI / 180);
-		const adjustedRadius = arrowRadius - arrowOffset;
-		const x = arrowRadius - adjustedRadius * Math.sin(gaugeAngleRadians);
-		const y = arrowRadius + adjustedRadius * Math.cos(gaugeAngleRadians);
-		const rotation = (Math.atan2(y - arrowRadius, x - arrowRadius) * 180) / Math.PI;
+		const angleDegrees = (percent / 100) * 180 - 90; // -90 to +90 degrees
+		const angleRadians = angleDegrees * (Math.PI / 180);
+		
+		// Calculate position on semi-circle
+		const x = arrowRadius + arrowRadius * Math.sin(angleRadians);
+		const y = arrowRadius - arrowRadius * Math.cos(angleRadians);
+		
+		// Rotation angle for the arrow (points in the direction of the value)
+		const rotation = angleDegrees;
+		
 		return { x, y, rotation };
 	});
 	
@@ -144,37 +158,18 @@
 	const arrowY = $derived(arrowPosition.y);
 	const arrowRotationAngle = $derived(arrowPosition.rotation);
 	
-	// Arrow color should match the segment color, not the status
-	const arrowColor = $derived.by(() => {
-		const segment = currentSegment;
-		if (segment && "color" in segment && segment.color) {
-			return segment.color;
-		}
-		return status.color;
-	});
+	// Arrow color is white for better visibility
+	const arrowColor = '#ffffff';
 
-	const palette: Record<
-		Severity,
-		{
-			card: string;
-			active: string;
-			bg: string;
-		}
-	> = {
+	const palette: Record<Severity, { card: string }> = {
 		safe: {
 			card: "from-[#151b2f] to-[#0d101f]",
-			active: "#22c55e",
-			bg: "rgba(255,255,255,0.15)",
 		},
 		warning: {
 			card: "from-[#22160c] to-[#140c06]",
-			active: "#eab308",
-			bg: "rgba(234,179,8,0.3)",
 		},
 		critical: {
 			card: "from-[#2b0e11] to-[#1a0709]",
-			active: "#ef4444",
-			bg: "rgba(239,68,68,0.35)",
 		},
 	};
 
@@ -216,7 +211,7 @@
 			</Gauge>
 			<div
 				class="gauge-arrow"
-				style={`--arrow-x: ${arrowX}px; --arrow-y: ${arrowY}px; --arrow-rotation: ${arrowRotationAngle}deg; --arrow-color: ${arrowColor};`}
+				style={`--arrow-x: ${arrowX}px; --arrow-y: ${arrowY}px;`}
 			></div>
 		</div>
 
@@ -272,27 +267,21 @@
 		stroke: none;
 	}
 
-	/* Arrow indicator */
+	/* Dot indicator */
 	.gauge-arrow {
 		position: absolute;
 		top: 50%;
 		left: 50%;
-		width: 0;
-		height: 0;
-		border-left: 6px solid transparent;
-		border-right: 6px solid transparent;
-		border-bottom: 14px solid var(--arrow-color);
-		transform-origin: center bottom;
-		/* 
-		 * Position arrow using exact coordinates from polarToCartesian calculation
-		 * This matches svelte-gauge's handle position exactly
-		 */
-		transform: translate(calc(-50% + var(--arrow-x) - 75px), calc(-50% + var(--arrow-y) - 75px))
-		           rotate(calc(var(--arrow-rotation) + 90deg));
+		width: 12px;
+		height: 12px;
+		background-color: white;
+		border-radius: 50%;
+		transform: translate(calc(-50% + var(--arrow-x) - 75px), calc(-50% + var(--arrow-y) - 75px));
 		pointer-events: none;
 		z-index: 10;
-		transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-bottom-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-		filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+		transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+		border: 2px solid rgba(0, 0, 0, 0.2);
 	}
 
 	/* Ensure center content is perfectly centered */

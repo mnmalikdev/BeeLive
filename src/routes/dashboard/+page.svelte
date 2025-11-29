@@ -1,7 +1,13 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import type { PageData } from './$types';
 	import { GaugeCardSkeleton } from '$lib/components/dashboard/index.js';
+	import { telemetryService, thresholdsService } from '$lib/services/index.js';
+	import { transformTelemetryToMetrics } from '$lib/utils/telemetry-transform.js';
+	import { handleApiError } from '$lib/utils/error-handler.js';
+	import { websocketStore } from '$lib/stores/websocket.store.js';
+	import type { Thresholds } from '$lib/services/thresholds.service.js';
+	import type { Telemetry } from '$lib/services/telemetry.service.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -24,7 +30,48 @@
 	};
 
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 	let metrics = $state<Metric[]>([]);
+	let thresholds = $state<Thresholds | null>(null);
+	let currentTelemetry = $state<Telemetry | null>(null);
+
+	// Listen to WebSocket telemetry updates
+	function handleTelemetryUpdate(event: CustomEvent) {
+		if (!thresholds) return;
+
+		const update = event.detail;
+		
+		// Merge with current telemetry
+		if (currentTelemetry) {
+			currentTelemetry = {
+				...currentTelemetry,
+				...update,
+				recordedAt: update.recordedAt 
+					? (update.recordedAt instanceof Date ? update.recordedAt : new Date(update.recordedAt))
+					: currentTelemetry.recordedAt,
+			};
+		} else {
+			// First update - convert to Telemetry format
+			currentTelemetry = {
+				id: update.id || '',
+				hiveId: update.hiveId || 'BERLIN-ROOFTOP-01',
+				recordedAt: update.recordedAt instanceof Date ? update.recordedAt : new Date(update.recordedAt),
+				temperature: update.temperature,
+				humidity: update.humidity,
+				weightKg: update.weightKg,
+				soundDb: update.soundDb,
+				co2Ppm: update.co2Ppm,
+				dailyHoneyGainG: update.dailyHoneyGainG,
+				swarmRisk: update.swarmRisk,
+				batteryPercent: update.batteryPercent,
+			};
+		}
+
+		// Update metrics
+		if (currentTelemetry && thresholds) {
+			metrics = transformTelemetryToMetrics(currentTelemetry, thresholds);
+		}
+	}
 
 	onMount(async () => {
 		try {
@@ -32,132 +79,35 @@
 			const module = await import('$lib/components/dashboard/index.js');
 			SectionCards = module.SectionCards;
 
-			// TODO: When implementing real server-side data fetching:
-			// 1. Remove this onMount data loading
-			// 2. Use +page.server.ts to fetch data from API
-			// 3. Pass data via props: let { data }: { data: PageData } = $props()
-			// 4. Skeletons will automatically show during navigation via SvelteKit's loading states
-			// 5. No artificial delays needed - loading state managed by SvelteKit
+			// Fetch telemetry and thresholds in parallel
+			const [telemetryResponse, thresholdsResponse] = await Promise.all([
+				telemetryService.getLatest(),
+				thresholdsService.getThresholds(),
+			]);
 
-			// Load metrics data (temporary - replace with server-side fetching)
-			metrics = [
-				{
-					id: 'temp',
-					label: 'Hive Temperature',
-					unit: '°C',
-					value: '34.2',
-					percent: 70,
-					severity: 'safe',
-					scale: ['32°', 'TCM', '36°'],
-					ranges: {
-						normal: '32.0 – 35.5 °C',
-						warning: '35.6 – 36.0 °C',
-						critical: '> 36.0 °C',
-					},
-				},
-				{
-					id: 'humidity',
-					label: 'Humidity',
-					unit: '%',
-					value: '78',
-					percent: 78,
-					severity: 'warning',
-					scale: ['40%', 'Hive', '85%'],
-					ranges: {
-						normal: '40 – 75 %',
-						warning: '75 – 85 %',
-						critical: '> 85 % or < 30 %',
-					},
-				},
-				{
-					id: 'weight',
-					label: 'Weight (kg)',
-					unit: 'kg',
-					value: '42.4',
-					percent: 55,
-					severity: 'safe',
-					scale: ['20 kg', 'Total', '60 kg'],
-					ranges: {
-						normal: '20 – 60 kg (depends on season)',
-						warning: 'Sudden drop > 200 g in 2 h',
-						critical: 'Drop > 500 g in 4 h',
-					},
-				},
-				{
-					id: 'activity',
-					label: 'Bee Activity',
-					unit: 'dB',
-					value: '62',
-					percent: 62,
-					severity: 'safe',
-					scale: ['50 dB', 'Day', '70 dB'],
-					ranges: {
-						normal: 'Day: 50 – 70 dB / Night: 20 – 40 dB',
-						warning: 'Day < 40 dB / Night > 50 dB',
-						critical: 'Day < 25 dB or Night > 60 dB',
-					},
-				},
-				{
-					id: 'co2',
-					label: 'CO₂',
-					unit: 'ppm',
-					value: '3 200',
-					percent: 80,
-					severity: 'warning',
-					scale: ['400', 'Vent', '4 000'],
-					ranges: {
-						normal: '400 – 2 000 ppm',
-						warning: '2 000 – 4 000 ppm',
-						critical: '> 4 000 ppm',
-					},
-				},
-				{
-					id: 'honey',
-					label: 'Daily Honey Gain',
-					unit: 'g',
-					value: '+320',
-					percent: 65,
-					severity: 'safe',
-					scale: ['0 g', 'Δ 24h', '800 g'],
-					ranges: {
-						normal: '+50 – +800 g/day (flow season)',
-						warning: '–200 – +50 g/day',
-						critical: '< –500 g/day',
-					},
-				},
-				{
-					id: 'swarm',
-					label: 'Swarm Risk Score',
-					unit: '',
-					value: '58',
-					percent: 58,
-					severity: 'warning',
-					scale: ['0', 'Score', '100'],
-					ranges: {
-						normal: '0 – 40',
-						warning: '40 – 70',
-						critical: '> 70',
-					},
-				},
-				{
-					id: 'battery',
-					label: 'Battery %',
-					unit: '%',
-					value: '28',
-					percent: 28,
-					severity: 'critical',
-					scale: ['0%', 'Charge', '100%'],
-					ranges: {
-						normal: '70 – 100 %',
-						warning: '30 – 70 %',
-						critical: '< 30 %',
-					},
-				},
-			];
+			// Store thresholds and telemetry
+			thresholds = thresholdsResponse.data;
+			currentTelemetry = telemetryResponse.data;
+
+			// Transform telemetry data into metrics format
+			metrics = transformTelemetryToMetrics(telemetryResponse.data, thresholdsResponse.data);
 			loading = false;
-		} catch (error) {
-			console.error('Failed to load dashboard data:', error);
+
+			// Listen to WebSocket telemetry updates
+			if (typeof window !== 'undefined') {
+				window.addEventListener('telemetry-update', handleTelemetryUpdate as EventListener);
+			}
+		} catch (err) {
+			error = handleApiError(err, false);
+			console.error('Failed to load dashboard data:', err);
 			loading = false;
+		}
+	});
+
+	onDestroy(() => {
+		// Cleanup event listener
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('telemetry-update', handleTelemetryUpdate as EventListener);
 		}
 	});
 </script>
@@ -167,7 +117,14 @@
 	<meta name="description" content="BeeLive Dashboard" />
 </svelte:head>
 
-{#if SectionCards && !loading}
+{#if error}
+	<div class="flex items-center justify-center p-8">
+		<div class="text-center">
+			<p class="text-lg font-semibold text-destructive">Failed to load dashboard data</p>
+			<p class="text-sm text-muted-foreground">{error}</p>
+		</div>
+	</div>
+{:else if SectionCards && !loading}
 	<SectionCards {metrics} {loading} />
 {:else}
 	<div class="grid w-full auto-rows-fr gap-6 px-4 lg:px-6 sm:grid-cols-2 xl:grid-cols-4">

@@ -1,6 +1,10 @@
 <script lang="ts">
 	import GaugeCard from "./gauge-card.svelte";
 	import GaugeCardSkeleton from "./gauge-card-skeleton.svelte";
+	import WeightGauge from "./weight-gauge.svelte";
+	import { thresholdsService } from "$lib/services/index.js";
+	import { onMount } from "svelte";
+	import type { Thresholds } from "$lib/services/thresholds.service.js";
 
 	type Severity = "safe" | "warning" | "critical";
 	type Metric = {
@@ -27,6 +31,17 @@
 		metrics?: Metric[];
 		loading?: boolean;
 	} = $props();
+
+	let thresholds = $state<Thresholds | null>(null);
+
+	onMount(async () => {
+		try {
+			const response = await thresholdsService.getThresholds();
+			thresholds = response.data;
+		} catch (error) {
+			console.error("Failed to load thresholds for weight gauge:", error);
+		}
+	});
 </script>
 
 <div class="grid w-full auto-rows-fr gap-6 px-4 lg:px-6 sm:grid-cols-2 xl:grid-cols-4">
@@ -39,7 +54,11 @@
 	{:else}
 		{#each metrics as metric (metric.id)}
 			<div class="flex w-full justify-center">
-				<GaugeCard {...metric} />
+				{#if metric.id === 'weight' && thresholds}
+					<WeightGauge {thresholds} />
+				{:else}
+					<GaugeCard {...metric} />
+				{/if}
 			</div>
 		{/each}
 	{/if}
