@@ -297,3 +297,175 @@ export function autoAdjustRangeThresholds(
 	return { warningMin, warningMax, criticalMin, criticalMax };
 }
 
+// ============================================
+// VALIDATION
+// ============================================
+
+export interface ValidationError {
+	field: string;
+	message: string;
+}
+
+export interface ValidationResult {
+	valid: boolean;
+	errors: ValidationError[];
+}
+
+/**
+ * Validate threshold values for a metric
+ * Returns validation result with any errors found
+ */
+export function validateThresholds(
+	metricId: string,
+	normalMin: number,
+	normalMax: number,
+	warningMin: number,
+	warningMax: number,
+	criticalMin: number,
+	criticalMax: number,
+	displayMin: number,
+	displayMax: number
+): ValidationResult {
+	const config = METRICS_CONFIG[metricId];
+	const errors: ValidationError[] = [];
+	
+	// Basic range validation
+	if (normalMin > normalMax) {
+		errors.push({
+			field: 'normal',
+			message: 'Normal minimum cannot be greater than maximum',
+		});
+	}
+	
+	if (warningMin > warningMax) {
+		errors.push({
+			field: 'warning',
+			message: 'Warning minimum cannot be greater than maximum',
+		});
+	}
+	
+	if (criticalMin > criticalMax) {
+		errors.push({
+			field: 'critical',
+			message: 'Critical minimum cannot be greater than maximum',
+		});
+	}
+	
+	// Display range validation
+	if (normalMin < displayMin || normalMax > displayMax) {
+		errors.push({
+			field: 'normal',
+			message: `Normal range must be within ${displayMin} - ${displayMax}`,
+		});
+	}
+	
+	// Type-specific validation
+	if (config?.type === 'ascending') {
+		// Ascending: Normal ≤ Warning ≤ Critical
+		if (warningMin < normalMax) {
+			errors.push({
+				field: 'warning',
+				message: 'Warning zone must start at or after normal maximum',
+			});
+		}
+		if (criticalMin < warningMax) {
+			errors.push({
+				field: 'critical',
+				message: 'Critical zone must start at or after warning maximum',
+			});
+		}
+	} else if (config?.type === 'inverted') {
+		// Inverted: Critical ≤ Warning ≤ Normal
+		if (warningMax > normalMin) {
+			errors.push({
+				field: 'warning',
+				message: 'Warning zone must end at or before normal minimum',
+			});
+		}
+		if (criticalMax > warningMin) {
+			errors.push({
+				field: 'critical',
+				message: 'Critical zone must end at or before warning minimum',
+			});
+		}
+	} else if (config?.type === 'range') {
+		// Range: Critical < Warning < Normal < Warning < Critical
+		// Warning must contain normal range
+		if (warningMin > normalMin || warningMax < normalMax) {
+			errors.push({
+				field: 'warning',
+				message: 'Warning zone must encompass the entire normal range',
+			});
+		}
+		// Critical boundaries must be at or beyond warning
+		if (criticalMin > warningMin || criticalMax < warningMax) {
+			errors.push({
+				field: 'critical',
+				message: 'Critical boundaries must be at or beyond warning zone',
+			});
+		}
+	}
+	
+	// Minimum span validation (prevent too narrow ranges)
+	const minSpan = config?.unit === '%' || config?.unit === '' ? 5 : 1;
+	if (normalMax - normalMin < minSpan) {
+		errors.push({
+			field: 'normal',
+			message: `Normal range must be at least ${minSpan} ${config?.unit || 'units'} wide`,
+		});
+	}
+	
+	return {
+		valid: errors.length === 0,
+		errors,
+	};
+}
+
+/**
+ * Validate normal range only (for quick validation during slider drag)
+ */
+export function validateNormalRange(
+	metricId: string,
+	normalMin: number,
+	normalMax: number,
+	displayMin: number,
+	displayMax: number
+): ValidationResult {
+	const config = METRICS_CONFIG[metricId];
+	const errors: ValidationError[] = [];
+	
+	if (normalMin > normalMax) {
+		errors.push({
+			field: 'normal',
+			message: 'Minimum cannot be greater than maximum',
+		});
+	}
+	
+	if (normalMin < displayMin) {
+		errors.push({
+			field: 'normal',
+			message: `Minimum cannot be less than ${displayMin}`,
+		});
+	}
+	
+	if (normalMax > displayMax) {
+		errors.push({
+			field: 'normal',
+			message: `Maximum cannot be greater than ${displayMax}`,
+		});
+	}
+	
+	const minSpan = config?.unit === '%' || config?.unit === '' ? 5 : 1;
+	if (normalMax - normalMin < minSpan) {
+		errors.push({
+			field: 'normal',
+			message: `Range must be at least ${minSpan} ${config?.unit || 'units'} wide`,
+		});
+	}
+	
+	return {
+		valid: errors.length === 0,
+		errors,
+	};
+}
+

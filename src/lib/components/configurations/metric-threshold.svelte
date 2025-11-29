@@ -3,12 +3,14 @@
 	import { Slider } from "$lib/components/ui/slider/index.js";
 	import { Label } from "$lib/components/ui/label/index.js";
 	import { Badge } from "$lib/components/ui/badge/index.js";
+	import { untrack } from "svelte";
 	import {
 		getMetricConfig,
 		autoAdjustAscendingThresholds,
 		autoAdjustInvertedThresholds,
 		autoAdjustRangeThresholds,
-		type MetricConfig
+		validateNormalRange,
+		type ValidationError
 	} from "$lib/config/metrics.config.js";
 
 	type MetricThresholdProps = {
@@ -40,19 +42,41 @@
 	}: MetricThresholdProps = $props();
 
 	// Get metric configuration from centralized config
-	const metricConfig = $derived(getMetricConfig(id));
-	const metricType = $derived(metricConfig?.type || 'range');
-	const isAutoAdjusted = $derived(metricConfig?.allowManualThresholds === false);
+	const metricConfig = getMetricConfig(id); // Not derived - id doesn't change
+	const metricType = metricConfig?.type || 'range';
+	const isAutoAdjusted = metricConfig?.allowManualThresholds === false;
 
-	// Create range arrays for the sliders
+	// Calculate appropriate step size based on range
+	// Larger ranges get bigger steps to reduce update frequency
+	const stepSize = $derived.by(() => {
+		const range = max - min;
+		if (unit === '%' || unit === '') return 1;
+		if (range >= 1000) return 10;  // CO2: 400-4000 → step 10
+		if (range >= 500) return 5;    // Honey: -500-1000 → step 5
+		if (range >= 100) return 1;
+		return 0.5;
+	});
+
+	// Create range arrays for the sliders - initialized from props
 	let normalRange = $state([normalMin, normalMax]);
 	let warningRange = $state([warningMin, warningMax]);
 	let criticalRange = $state([criticalMin, criticalMax]);
 
-	// Auto-adjust warning and critical when normal range changes
-	function autoAdjustThresholds() {
-		if (!metricConfig || metricConfig.allowManualThresholds) return;
+	// Validation state
+	let validationErrors = $state<ValidationError[]>([]);
+	const hasErrors = $derived(validationErrors.length > 0);
+
+	// Validate and auto-adjust thresholds
+	function handleNormalRangeChange() {
+		// Validate
+		const result = validateNormalRange(id, normalRange[0], normalRange[1], min, max);
+		validationErrors = result.errors;
 		
+		if (!result.valid || !metricConfig || metricConfig.allowManualThresholds) {
+			return;
+		}
+		
+		// Auto-adjust warning and critical
 		try {
 			if (metricConfig.type === 'ascending') {
 				const adjusted = autoAdjustAscendingThresholds(id, normalRange[1], max);
@@ -70,55 +94,75 @@
 		} catch (e) {
 			console.error('Failed to auto-adjust thresholds:', e);
 		}
+		
+		// Update parent props (use untrack to prevent circular updates)
+		untrack(() => {
+			normalMin = normalRange[0];
+			normalMax = normalRange[1];
+			warningMin = warningRange[0];
+			warningMax = warningRange[1];
+			criticalMin = criticalRange[0];
+			criticalMax = criticalRange[1];
+		});
 	}
 
-	// Sync ranges when props change from parent
-	$effect(() => {
-		normalRange = [normalMin, normalMax];
-	});
+	// Handle slider change events directly instead of using effects
+	function onNormalSliderChange(newValue: number[]) {
+		normalRange = newValue;
+		handleNormalRangeChange();
+	}
 
-	// Auto-adjust when normal range changes
-	$effect(() => {
-		// Track normalRange changes
-		const _ = normalRange[0] + normalRange[1];
-		autoAdjustThresholds();
-	});
+	function onWarningSliderChange(newValue: number[]) {
+		if (isAutoAdjusted) return;
+		warningRange = newValue;
+		untrack(() => {
+			warningMin = newValue[0];
+			warningMax = newValue[1];
+		});
+	}
 
-	// Sync warning and critical ranges from props (only if not auto-adjusted)
+	function onCriticalSliderChange(newValue: number[]) {
+		if (isAutoAdjusted) return;
+		criticalRange = newValue;
+		untrack(() => {
+			criticalMin = newValue[0];
+			criticalMax = newValue[1];
+		});
+	}
+
+	// Initialize from props only once on mount (not reactive)
 	$effect(() => {
-		if (!isAutoAdjusted) {
-			warningRange = [warningMin, warningMax];
-			criticalRange = [criticalMin, criticalMax];
+		// Only sync from parent if values are significantly different
+		// This prevents fighting between parent and local state
+		const normalChanged = Math.abs(normalMin - normalRange[0]) > stepSize || 
+		                      Math.abs(normalMax - normalRange[1]) > stepSize;
+		if (normalChanged) {
+			normalRange = [normalMin, normalMax];
 		}
-	});
-
-	// Update parent props when slider ranges change
-	$effect(() => {
-		normalMin = normalRange[0];
-		normalMax = normalRange[1];
-	});
-
-	$effect(() => {
-		warningMin = warningRange[0];
-		warningMax = warningRange[1];
-	});
-
-	$effect(() => {
-		criticalMin = criticalRange[0];
-		criticalMax = criticalRange[1];
+		
+		if (!isAutoAdjusted) {
+			const warningChanged = Math.abs(warningMin - warningRange[0]) > stepSize ||
+			                       Math.abs(warningMax - warningRange[1]) > stepSize;
+			const criticalChanged = Math.abs(criticalMin - criticalRange[0]) > stepSize ||
+			                        Math.abs(criticalMax - criticalRange[1]) > stepSize;
+			if (warningChanged) warningRange = [warningMin, warningMax];
+			if (criticalChanged) criticalRange = [criticalMin, criticalMax];
+		}
 	});
 
 	const formatValue = (val: number): string => {
 		if (unit === "%" || unit === "") {
 			return `${Math.round(val)}${unit}`;
 		}
+		// For large ranges, show whole numbers
+		if (max - min >= 100) {
+			return `${Math.round(val)}${unit}`;
+		}
 		return `${val.toFixed(1)}${unit}`;
 	};
 
 	// Get description for the metric type
-	const typeDescription = $derived.by(() => {
-		if (!metricConfig) return '';
-		
+	const typeDescription = metricConfig ? (() => {
 		switch (metricConfig.type) {
 			case 'ascending':
 				return `Lower values are better. Warning and critical zones are automatically calculated above the normal range.`;
@@ -129,13 +173,29 @@
 			default:
 				return '';
 		}
-	});
+	})() : '';
+
+	// Get error for a specific field
+	function getFieldError(field: string): string | undefined {
+		return validationErrors.find(e => e.field === field)?.message;
+	}
+
+	const normalError = $derived(getFieldError('normal'));
+	const warningError = $derived(getFieldError('warning'));
+	const criticalError = $derived(getFieldError('critical'));
 </script>
 
-<Card class="border-border/60">
+<Card class="border-border/60 {hasErrors ? 'border-red-500/50' : ''}">
 	<CardHeader>
-		<CardTitle class="text-lg">{label}</CardTitle>
-		<CardDescription>Configure threshold ranges for {label.toLowerCase()}</CardDescription>
+		<div class="flex items-center justify-between">
+			<div>
+				<CardTitle class="text-lg">{label}</CardTitle>
+				<CardDescription>Configure threshold ranges for {label.toLowerCase()}</CardDescription>
+			</div>
+			{#if hasErrors}
+				<Badge variant="destructive" class="text-xs">Invalid</Badge>
+			{/if}
+		</div>
 	</CardHeader>
 	<CardContent class="space-y-6">
 		{#if isAutoAdjusted && typeDescription}
@@ -148,7 +208,7 @@
 		<div class="space-y-2">
 			<div class="flex items-center justify-between">
 				<Label for={`${id}-normal`} class="flex items-center gap-2">
-					<Badge class="bg-green-500/20 text-green-500 border-green-500/30" variant="outline">
+					<Badge class="bg-green-500/20 text-green-500 border-green-500/30 {normalError ? 'bg-red-500/20 text-red-500 border-red-500/30' : ''}" variant="outline">
 						Normal
 					</Badge>
 					<span class="text-sm text-muted-foreground">
@@ -159,18 +219,27 @@
 			<Slider
 				id={`${id}-normal`}
 				type="multiple"
-				bind:value={normalRange}
+				value={normalRange}
+				onValueChange={onNormalSliderChange}
 				min={min}
 				max={max}
-				step={unit === "%" || unit === "" ? 1 : 0.1}
+				step={stepSize}
 			/>
+			{#if normalError}
+				<p class="text-xs text-red-500 flex items-center gap-1">
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3">
+						<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+					</svg>
+					{normalError}
+				</p>
+			{/if}
 		</div>
 
 		<!-- Warning Range -->
 		<div class="space-y-2">
 			<div class="flex items-center justify-between">
 				<Label for={`${id}-warning`} class="flex items-center gap-2">
-					<Badge class="bg-yellow-500/20 text-yellow-500 border-yellow-500/30" variant="outline">
+					<Badge class="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 {warningError ? 'bg-red-500/20 text-red-500 border-red-500/30' : ''}" variant="outline">
 						Warning
 					</Badge>
 					<span class="text-sm text-muted-foreground">
@@ -185,13 +254,21 @@
 			<Slider
 				id={`${id}-warning`}
 				type="multiple"
-				bind:value={warningRange}
+				value={warningRange}
+				onValueChange={onWarningSliderChange}
 				min={min}
 				max={max}
-				step={unit === "%" || unit === "" ? 1 : 0.1}
+				step={stepSize}
 				disabled={isAutoAdjusted}
 			/>
-			{#if isAutoAdjusted}
+			{#if warningError}
+				<p class="text-xs text-red-500 flex items-center gap-1">
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3">
+						<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+					</svg>
+					{warningError}
+				</p>
+			{:else if isAutoAdjusted}
 				<p class="text-xs text-muted-foreground">
 					{#if metricType === 'ascending'}
 						Values from {formatValue(warningRange[0])} to {formatValue(warningRange[1])} trigger warning.
@@ -208,7 +285,7 @@
 		<div class="space-y-2">
 			<div class="flex items-center justify-between">
 				<Label for={`${id}-critical`} class="flex items-center gap-2">
-					<Badge class="bg-red-500/20 text-red-500 border-red-500/30" variant="outline">
+					<Badge class="bg-red-500/20 text-red-500 border-red-500/30 {criticalError ? 'animate-pulse' : ''}" variant="outline">
 						Critical
 					</Badge>
 					<span class="text-sm text-muted-foreground">
@@ -225,13 +302,21 @@
 			<Slider
 				id={`${id}-critical`}
 				type="multiple"
-				bind:value={criticalRange}
+				value={criticalRange}
+				onValueChange={onCriticalSliderChange}
 				min={min}
 				max={max}
-				step={unit === "%" || unit === "" ? 1 : 0.1}
+				step={stepSize}
 				disabled={isAutoAdjusted}
 			/>
-			{#if isAutoAdjusted}
+			{#if criticalError}
+				<p class="text-xs text-red-500 flex items-center gap-1">
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3">
+						<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+					</svg>
+					{criticalError}
+				</p>
+			{:else if isAutoAdjusted}
 				<p class="text-xs text-muted-foreground">
 					{#if metricType === 'ascending'}
 						Values above {formatValue(criticalRange[0])} are critical.

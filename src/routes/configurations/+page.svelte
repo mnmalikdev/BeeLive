@@ -57,15 +57,38 @@
 		}
 	});
 
-	// Check if any changes have been made
-	const hasChanges = $derived.by(() => {
-		if (originalMetrics.length === 0 || metrics.length === 0) return false;
+	// Track if any changes have been made (using a flag instead of expensive JSON comparison)
+	let changesMade = $state(false);
+	
+	// Mark changes when metrics are modified
+	$effect(() => {
+		// Only check if we have data loaded
+		if (originalMetrics.length === 0 || metrics.length === 0) return;
 		
-		const metricsChanged = JSON.stringify(metrics) !== JSON.stringify(originalMetrics);
-		const weightMonitoringChanged = JSON.stringify(weightMonitoring) !== JSON.stringify(originalWeightMonitoring);
+		// Simple shallow comparison for each metric
+		for (let i = 0; i < metrics.length; i++) {
+			const m = metrics[i];
+			const o = originalMetrics[i];
+			if (!o || m.normalMin !== o.normalMin || m.normalMax !== o.normalMax ||
+			    m.warningMin !== o.warningMin || m.warningMax !== o.warningMax ||
+			    m.criticalMin !== o.criticalMin || m.criticalMax !== o.criticalMax) {
+				changesMade = true;
+				return;
+			}
+		}
 		
-		return metricsChanged || weightMonitoringChanged;
+		// Check weight monitoring
+		if (weightMonitoring.weightCriticalRobberyDropKg !== originalWeightMonitoring.weightCriticalRobberyDropKg ||
+		    weightMonitoring.weightWarningDailyLossG !== originalWeightMonitoring.weightWarningDailyLossG ||
+		    weightMonitoring.weightNormalDailyGainMinG !== originalWeightMonitoring.weightNormalDailyGainMinG) {
+			changesMade = true;
+			return;
+		}
+		
+		changesMade = false;
 	});
+	
+	const hasChanges = $derived(changesMade);
 
 	/**
 	 * Validate basic requirements (only normal range validation)
