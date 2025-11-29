@@ -3,6 +3,13 @@
 	import { Slider } from "$lib/components/ui/slider/index.js";
 	import { Label } from "$lib/components/ui/label/index.js";
 	import { Badge } from "$lib/components/ui/badge/index.js";
+	import {
+		getMetricConfig,
+		autoAdjustAscendingThresholds,
+		autoAdjustInvertedThresholds,
+		autoAdjustRangeThresholds,
+		type MetricConfig
+	} from "$lib/config/metrics.config.js";
 
 	type MetricThresholdProps = {
 		id: string;
@@ -32,115 +39,37 @@
 		criticalMax = $bindable(100),
 	}: MetricThresholdProps = $props();
 
-	// Determine metric type for UI display
-	const isNormalMetric = ['temp', 'humidity', 'activity'].includes(id);
-	const isAscendingMetric = ['co2', 'swarm'].includes(id);
-	const isInvertedMetric = ['battery', 'honey'].includes(id);
-	const isWeight = id === 'weight';
+	// Get metric configuration from centralized config
+	const metricConfig = $derived(getMetricConfig(id));
+	const metricType = $derived(metricConfig?.type || 'range');
+	const isAutoAdjusted = $derived(metricConfig?.allowManualThresholds === false);
 
-	// Create range arrays for the sliders - initialize from props
+	// Create range arrays for the sliders
 	let normalRange = $state([normalMin, normalMax]);
 	let warningRange = $state([warningMin, warningMax]);
 	let criticalRange = $state([criticalMin, criticalMax]);
 
-	// For normal metrics, automatically adjust warning and critical based on normal range
-	// Pattern: Warning extends exactly 10 units beyond normal range on both sides
-	//          Critical boundaries are at warning boundaries
-	// Example (Humidity): Normal 30-80, Warning 20-90, Critical <20 or >90
-	function autoAdjustNormalMetricThresholds() {
-		if (!isNormalMetric) return;
+	// Auto-adjust warning and critical when normal range changes
+	function autoAdjustThresholds() {
+		if (!metricConfig || metricConfig.allowManualThresholds) return;
 		
-		const step = unit === "%" || unit === "" ? 1 : 0.1;
-		
-		// Fixed extension: exactly 10 units on both sides for all normal metrics
-		const extension = 10;
-		
-		// Warning range: extends exactly 10 units beyond normal range
-		const newWarningMin = Math.max(min, Math.round((normalMin - extension) / step) * step);
-		const newWarningMax = Math.min(max, Math.round((normalMax + extension) / step) * step);
-		
-		// Critical range: warning boundaries define where critical zones start
-		// criticalMin = warningMin (boundary: anything < this is critical)
-		// criticalMax = warningMax (boundary: anything > this is critical)
-		const newCriticalMin = newWarningMin; // Boundary for critical low zone
-		const newCriticalMax = newWarningMax; // Boundary for critical high zone
-		
-		// Update ranges
-		warningRange = [newWarningMin, newWarningMax];
-		criticalRange = [newCriticalMin, newCriticalMax];
-	}
-
-	// For ascending metrics (CO2, swarm risk), automatically adjust warning and critical
-	// Pattern: User only defines normal range
-	//          Warning starts immediately at normalMax (no gap - contiguous ranges)
-	//          Critical starts immediately at warningMax (no gap - contiguous ranges)
-	// Example (CO2): Normal 400-1000, Warning 1000-1500, Critical 1500-5000
-	function autoAdjustAscendingMetricThresholds() {
-		if (!isAscendingMetric) return;
-		
-		const step = unit === "%" || unit === "" ? 1 : 0.1;
-		
-		// Warning starts at normalMax (contiguous), extends to a reasonable upper bound
-		// Use appropriate span based on metric type
-		const normalSpan = normalMax - normalMin;
-		let warningSpan: number;
-		
-		if (id === 'co2') {
-			warningSpan = 500; // CO2: warning range of 500 ppm
-		} else if (id === 'swarm') {
-			warningSpan = 10; // Swarm: warning range of 10 points
-		} else {
-			warningSpan = Math.max(normalSpan * 0.5, 100);
+		try {
+			if (metricConfig.type === 'ascending') {
+				const adjusted = autoAdjustAscendingThresholds(id, normalRange[1], max);
+				warningRange = [adjusted.warningMin, adjusted.warningMax];
+				criticalRange = [adjusted.criticalMin, adjusted.criticalMax];
+			} else if (metricConfig.type === 'inverted') {
+				const adjusted = autoAdjustInvertedThresholds(id, normalRange[0], min);
+				warningRange = [adjusted.warningMin, adjusted.warningMax];
+				criticalRange = [adjusted.criticalMin, adjusted.criticalMax];
+			} else {
+				const adjusted = autoAdjustRangeThresholds(id, normalRange[0], normalRange[1], min, max);
+				warningRange = [adjusted.warningMin, adjusted.warningMax];
+				criticalRange = [adjusted.criticalMin, adjusted.criticalMax];
+			}
+		} catch (e) {
+			console.error('Failed to auto-adjust thresholds:', e);
 		}
-		
-		// Warning starts at normalMax (contiguous - no gap)
-		const newWarningMin = normalMax;
-		const newWarningMax = Math.min(max, Math.round((newWarningMin + warningSpan) / step) * step);
-		
-		// Critical starts at warningMax (contiguous - no gap), extends to max
-		const newCriticalMin = newWarningMax;
-		const newCriticalMax = max; // Critical extends to maximum
-		
-		// Update ranges
-		warningRange = [newWarningMin, newWarningMax];
-		criticalRange = [newCriticalMin, newCriticalMax];
-	}
-
-	// For inverted metrics (battery, honey gain), automatically adjust warning and critical
-	// Pattern: User only defines normal range
-	//          Warning ends at normalMin (no gap - contiguous ranges)
-	//          Critical ends at warningMin (no gap - contiguous ranges)
-	// Example (Battery): Critical 0-30, Warning 30-70, Normal 70-100
-	// Example (Honey Gain): Critical -1000--200, Warning -200-50, Normal 50-1000
-	function autoAdjustInvertedMetricThresholds() {
-		if (!isInvertedMetric) return;
-		
-		const step = unit === "%" || unit === "" ? 1 : 0.1;
-		
-		// Warning ends at normalMin (contiguous), starts at a reasonable lower bound
-		// Use appropriate span based on metric type
-		const normalSpan = normalMax - normalMin;
-		let warningSpan: number;
-		
-		if (id === 'battery') {
-			warningSpan = 40; // Battery: warning range of 40%
-		} else if (id === 'honey') {
-			warningSpan = 250; // Honey Gain: warning range of 250g
-		} else {
-			warningSpan = Math.max(normalSpan * 0.5, 100);
-		}
-		
-		// Warning ends at normalMin (contiguous - no gap)
-		const newWarningMax = normalMin;
-		const newWarningMin = Math.max(min, Math.round((newWarningMax - warningSpan) / step) * step);
-		
-		// Critical ends at warningMin (contiguous - no gap), starts at min
-		const newCriticalMax = newWarningMin;
-		const newCriticalMin = min; // Critical starts at minimum
-		
-		// Update ranges
-		warningRange = [newWarningMin, newWarningMax];
-		criticalRange = [newCriticalMin, newCriticalMax];
 	}
 
 	// Sync ranges when props change from parent
@@ -148,23 +77,16 @@
 		normalRange = [normalMin, normalMax];
 	});
 
-	// Auto-adjust warning and critical when normal range changes
+	// Auto-adjust when normal range changes
 	$effect(() => {
-		// Trigger auto-adjustment when normalRange changes
-		const _ = normalRange[0] + normalRange[1]; // Track normalRange changes
-		
-		if (isNormalMetric) {
-			autoAdjustNormalMetricThresholds();
-		} else if (isAscendingMetric) {
-			autoAdjustAscendingMetricThresholds();
-		} else if (isInvertedMetric) {
-			autoAdjustInvertedMetricThresholds();
-		}
+		// Track normalRange changes
+		const _ = normalRange[0] + normalRange[1];
+		autoAdjustThresholds();
 	});
 
 	// Sync warning and critical ranges from props (only if not auto-adjusted)
 	$effect(() => {
-		if (!isNormalMetric && !isAscendingMetric && !isInvertedMetric) {
+		if (!isAutoAdjusted) {
 			warningRange = [warningMin, warningMax];
 			criticalRange = [criticalMin, criticalMax];
 		}
@@ -192,6 +114,22 @@
 		}
 		return `${val.toFixed(1)}${unit}`;
 	};
+
+	// Get description for the metric type
+	const typeDescription = $derived.by(() => {
+		if (!metricConfig) return '';
+		
+		switch (metricConfig.type) {
+			case 'ascending':
+				return `Lower values are better. Warning and critical zones are automatically calculated above the normal range.`;
+			case 'inverted':
+				return `Higher values are better. Warning and critical zones are automatically calculated below the normal range.`;
+			case 'range':
+				return `Middle values are optimal. Warning extends ${metricConfig.autoAdjust.warningExtension || 10} units beyond normal on both sides.`;
+			default:
+				return '';
+		}
+	});
 </script>
 
 <Card class="border-border/60">
@@ -200,29 +138,9 @@
 		<CardDescription>Configure threshold ranges for {label.toLowerCase()}</CardDescription>
 	</CardHeader>
 	<CardContent class="space-y-6">
-		{#if isNormalMetric}
-			<!-- Normal metrics: Critical (extremes) → Warning (sides) → Normal (middle) -->
+		{#if isAutoAdjusted && typeDescription}
 			<div class="rounded-lg bg-muted/50 p-3 mb-4">
-				<p class="text-xs text-muted-foreground">
-					For {label.toLowerCase()}, warning extends exactly 10 units beyond normal range on both sides.
-					Critical zones are at extremes (&lt; {formatValue(criticalMin)} or &gt; {formatValue(criticalMax)}).
-				</p>
-			</div>
-		{:else if isAscendingMetric}
-			<!-- Ascending metrics: Normal (low) → Warning (middle) → Critical (high) -->
-			<div class="rounded-lg bg-muted/50 p-3 mb-4">
-				<p class="text-xs text-muted-foreground">
-					For {label.toLowerCase()}, you only need to define the normal range. Warning and critical ranges are automatically calculated.
-					Warning starts after normal range, critical starts after warning range.
-				</p>
-			</div>
-		{:else if isInvertedMetric}
-			<!-- Inverted metrics: Critical (low) → Warning (middle) → Normal (high) -->
-			<div class="rounded-lg bg-muted/50 p-3 mb-4">
-				<p class="text-xs text-muted-foreground">
-					For {label.toLowerCase()}, you only need to define the normal range. Warning and critical ranges are automatically calculated.
-					Warning starts before normal range, critical starts before warning range.
-				</p>
+				<p class="text-xs text-muted-foreground">{typeDescription}</p>
 			</div>
 		{/if}
 
@@ -256,8 +174,8 @@
 						Warning
 					</Badge>
 					<span class="text-sm text-muted-foreground">
-						{#if isNormalMetric || isAscendingMetric || isInvertedMetric}
-							Auto-adjusted: {formatValue(warningRange[0])} - {formatValue(warningRange[1])}
+						{#if isAutoAdjusted}
+							Auto: {formatValue(warningRange[0])} - {formatValue(warningRange[1])}
 						{:else}
 							{formatValue(warningRange[0])} - {formatValue(warningRange[1])}
 						{/if}
@@ -271,17 +189,16 @@
 				min={min}
 				max={max}
 				step={unit === "%" || unit === "" ? 1 : 0.1}
-				disabled={isNormalMetric || isAscendingMetric || isInvertedMetric}
+				disabled={isAutoAdjusted}
 			/>
-			{#if isNormalMetric || isAscendingMetric || isInvertedMetric}
+			{#if isAutoAdjusted}
 				<p class="text-xs text-muted-foreground">
-					Warning range is automatically adjusted based on normal range.
-					{#if isNormalMetric}
-						Anything below {formatValue(warningRange[0])} or above {formatValue(warningRange[1])} is critical.
-					{:else if isAscendingMetric}
-						Warning: {formatValue(warningRange[0])} - {formatValue(warningRange[1])}, Critical: &gt; {formatValue(criticalRange[0])}
-					{:else if isInvertedMetric}
-						Warning: {formatValue(warningRange[0])} - {formatValue(warningRange[1])}, Critical: &lt; {formatValue(criticalRange[1])}
+					{#if metricType === 'ascending'}
+						Values from {formatValue(warningRange[0])} to {formatValue(warningRange[1])} trigger warning.
+					{:else if metricType === 'inverted'}
+						Values from {formatValue(warningRange[0])} to {formatValue(warningRange[1])} trigger warning.
+					{:else}
+						Values outside normal range but within {formatValue(warningRange[0])} - {formatValue(warningRange[1])} trigger warning.
 					{/if}
 				</p>
 			{/if}
@@ -295,12 +212,10 @@
 						Critical
 					</Badge>
 					<span class="text-sm text-muted-foreground">
-						{#if isNormalMetric}
+						{#if metricType === 'range'}
 							&lt; {formatValue(criticalRange[0])} or &gt; {formatValue(criticalRange[1])}
-						{:else if isAscendingMetric}
-							Auto-adjusted: {formatValue(criticalRange[0])} - {formatValue(criticalRange[1])}
-						{:else if isInvertedMetric}
-							Auto-adjusted: {formatValue(criticalRange[0])} - {formatValue(criticalRange[1])}
+						{:else if isAutoAdjusted}
+							Auto: {formatValue(criticalRange[0])} - {formatValue(criticalRange[1])}
 						{:else}
 							{formatValue(criticalRange[0])} - {formatValue(criticalRange[1])}
 						{/if}
@@ -314,21 +229,19 @@
 				min={min}
 				max={max}
 				step={unit === "%" || unit === "" ? 1 : 0.1}
-				disabled={isNormalMetric || isAscendingMetric || isInvertedMetric}
+				disabled={isAutoAdjusted}
 			/>
-			{#if isNormalMetric || isAscendingMetric || isInvertedMetric}
+			{#if isAutoAdjusted}
 				<p class="text-xs text-muted-foreground">
-					Critical range is automatically adjusted based on normal range.
-					{#if isNormalMetric}
+					{#if metricType === 'ascending'}
+						Values above {formatValue(criticalRange[0])} are critical.
+					{:else if metricType === 'inverted'}
+						Values below {formatValue(criticalRange[1])} are critical.
+					{:else}
 						Values below {formatValue(criticalRange[0])} or above {formatValue(criticalRange[1])} are critical.
-					{:else if isAscendingMetric}
-						Critical: {formatValue(criticalRange[0])} - {formatValue(criticalRange[1])}
-					{:else if isInvertedMetric}
-						Critical: {formatValue(criticalRange[0])} - {formatValue(criticalRange[1])}
 					{/if}
 				</p>
 			{/if}
 		</div>
 	</CardContent>
 </Card>
-

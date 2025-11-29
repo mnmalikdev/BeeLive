@@ -12,7 +12,7 @@
 	const data = {
 		user: {
 			name: "BeeLive",
-			email: "info@processalerts.com",
+			email: "info@beelive.com",
 			avatar: favicon,
 		},
 		navMain: [
